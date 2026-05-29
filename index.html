@@ -2,61 +2,47 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>双人联机五子棋</title>
+<title>单机五子棋</title>
 <style>
 body {
-    background: #f5f5f5;
+    background: #fff;
     display: flex;
     flex-direction: column;
     align-items: center;
     font-family: "Microsoft YaHei", sans-serif;
-    margin: 0;
-    padding: 10px;
 }
 #board {
     background: #d4b886;
     border: 2px solid #000;
 }
-.info {
-    font-size: 18px;
-    margin: 8px 0;
-    color: #333;
-}
 .tip {
-    font-size: 14px;
-    color: #666;
-    margin-bottom: 10px;
+    margin: 10px 0;
+    font-size: 16px;
 }
 </style>
 </head>
 <body>
-<div class="info" id="status">正在匹配对手...</div>
-<div class="tip">左键落子 | 右键/退格悔棋 | 方向键移动光标 | C键光标归中</div>
+<div class="tip">操作：鼠标左键落子 | 右键/退格悔棋 | 方向键移动 | 空格落子 | C键归位</div>
 <canvas id="board" width="570" height="570"></canvas>
 
 <script>
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
-const statusText = document.getElementById('status');
 const GRID = 19;
 const CELL = 30;
 
-// 游戏数据
-let win = 0;
-let control = 1;
-let postion = [0, 0];
-let black = [];
-let white = [];
-let myRole = 0;    // 1=黑棋(先手) 2=白棋(后手)
-let roomReady = false;
-
-// 公共联机服务（全局房间，多人自动配对）
-const ws = new WebSocket("wss://socket-demo.liujinjin.workers.dev");
+// 游戏全局变量（对应你MATLAB代码）
+let win = 0;          // 0对局中 1黑胜 -1白胜
+let control = 1;      // 1黑棋 0白棋
+let postion = [0, 0]; // 光标位置
+let black = [];       // 黑棋坐标
+let white = [];       // 白棋坐标
 
 // 绘制棋盘
 function drawBoard() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = "#000";
+    // 网格线
     for (let i = 0; i < GRID; i++) {
         let pos = CELL / 2 + i * CELL;
         ctx.beginPath();
@@ -68,8 +54,10 @@ function drawBoard() {
         ctx.lineTo(canvas.width - CELL / 2, pos);
         ctx.stroke();
     }
-    // 星位点
-    const dots = [[3,3],[3,15],[9,9],[15,3],[15,15]];
+    // 四角+天元点位
+    const dots = [
+        [3,3], [3,15], [9,9], [15,3], [15,15]
+    ];
     ctx.fillStyle = "#000";
     dots.forEach(([x,y]) => {
         let cx = CELL/2 + x * CELL;
@@ -80,10 +68,10 @@ function drawBoard() {
     });
 }
 
-// 绘制全部内容：棋子 + 光标
+// 绘制所有棋子 + 光标
 function drawAll() {
     drawBoard();
-    // 黑棋
+    // 画黑棋
     black.forEach(([x,y]) => {
         let cx = CELL/2 + (x + 9) * CELL;
         let cy = CELL/2 + (y + 9) * CELL;
@@ -92,7 +80,7 @@ function drawAll() {
         ctx.arc(cx, cy, CELL/2 - 2, 0, Math.PI * 2);
         ctx.fill();
     });
-    // 白棋
+    // 画白棋
     white.forEach(([x,y]) => {
         let cx = CELL/2 + (x + 9) * CELL;
         let cy = CELL/2 + (y + 9) * CELL;
@@ -114,80 +102,74 @@ function drawAll() {
     ctx.lineWidth = 1;
 }
 
-// 五子胜负判断
-function checkWin() {
-    if (black.length === 0 && white.length === 0) return 0;
-    let map = Array(GRID).fill().map(() => Array(GRID).fill(0));
-    black.forEach(([x,y])=>{
-        let tx = x + 9, ty = y + 9;
-        map[ty][tx] = 1;
+// 胜负判断（完全复刻你的MATLAB逻辑）
+function panding() {
+    if (black.length === 0 && white.length === 0) return;
+    let qipan = Array(GRID).fill().map(() => Array(GRID).fill(0));
+    // 映射坐标
+    black.forEach(([x,y]) => {
+        let tx = x + 9;
+        let ty = y + 9;
+        qipan[ty][tx] = 1;
     });
-    white.forEach(([x,y])=>{
-        let tx = x + 9, ty = y + 9;
-        map[ty][tx] = -1;
+    white.forEach(([x,y]) => {
+        let tx = x + 9;
+        let ty = y + 9;
+        qipan[ty][tx] = -1;
     });
 
-    const dir = [[1,0],[0,1],[1,1],[1,-1]];
+    // 四个方向判断五子连珠
+    const dirs = [[1,0],[0,1],[1,1],[1,-1]];
     for (let y = 0; y < GRID; y++) {
         for (let x = 0; x < GRID; x++) {
-            let cur = map[y][x];
+            let cur = qipan[y][x];
             if (cur === 0) continue;
-            for (let [dx, dy] of dir) {
+            for (let [dx, dy] of dirs) {
                 let cnt = 1;
-                for (let k=1;k<5;k++){
-                    let nx = x + dx*k, ny = y + dy*k;
-                    if(nx>=0&&nx<GRID&&ny>=0&&ny<GRID&&map[ny][nx]===cur) cnt++;
+                // 正向
+                for (let k = 1; k < 5; k++) {
+                    let nx = x + dx * k;
+                    let ny = y + dy * k;
+                    if (nx >=0 && nx < GRID && ny >=0 && ny < GRID && qipan[ny][nx] === cur) cnt++;
                     else break;
                 }
-                for (let k=1;k<5;k++){
-                    let nx = x - dx*k, ny = y - dy*k;
-                    if(nx>=0&&nx<GRID&&ny>=0&&ny<GRID&&map[ny][nx]===cur) cnt++;
+                // 反向
+                for (let k = 1; k < 5; k++) {
+                    let nx = x - dx * k;
+                    let ny = y - dy * k;
+                    if (nx >=0 && nx < GRID && ny >=0 && ny < GRID && qipan[ny][nx] === cur) cnt++;
                     else break;
                 }
-                if (cnt >= 5) return cur;
+                if (cnt >= 5) {
+                    win = cur;
+                    return;
+                }
             }
         }
     }
-    return 0;
 }
 
 // 落子逻辑
-function doPlace() {
-    if (!roomReady || win !== 0) return;
-    // 不是自己回合，禁止操作
-    if ((control === 1 && myRole !== 1) || (control === 0 && myRole !== 2)) return;
+function place() {
+    let exist = false;
+    for (let p of black) {
+        if (p[0] === postion[0] && p[1] === postion[1]) { exist = true; break; }
+    }
+    for (let p of white) {
+        if (p[0] === postion[0] && p[1] === postion[1]) { exist = true; break; }
+    }
+    if (exist) return;
 
-    // 判断点位是否已有棋子
-    let has = false;
-    black.forEach(p=>{if(p[0]===postion[0]&&p[1]===postion[1]) has=true;});
-    white.forEach(p=>{if(p[0]===postion[0]&&p[1]===postion[1]) has=true;});
-    if (has) return;
-
-    // 执行落子
     if (control === 1) {
         black.push([...postion]);
     } else {
         white.push([...postion]);
     }
     control = (control + 1) % 2;
-    win = checkWin();
-
-    // 同步给对手
-    ws.send(JSON.stringify({
-        type: "move",
-        pos: postion,
-        ctrl: control,
-        win: win
-    }));
-    drawAll();
-    checkResult();
 }
 
-// 悔棋
-function doUndo() {
-    if (!roomReady || win !== 0) return;
-    if ((control === 1 && myRole !== 2) || (control === 0 && myRole !== 1)) return;
-
+// 悔棋逻辑
+function undo() {
     let ok = false;
     if (control === 0 && black.length > 0) {
         black.pop();
@@ -197,126 +179,99 @@ function doUndo() {
         white.pop();
         ok = true;
     }
-    if (!ok) return;
-    control = (control + 1) % 2;
-    ws.send(JSON.stringify({type:"undo", ctrl: control}));
-    drawAll();
+    if (ok) {
+        control = (control + 1) % 2;
+    }
 }
 
-// 重置整局游戏
-function resetAll() {
+// 重置游戏
+function resetGame() {
     win = 0;
     control = 1;
     black = [];
     white = [];
     postion = [0, 0];
-    ws.send(JSON.stringify({type:"reset"}));
     drawAll();
 }
 
-// 胜负弹窗
-function checkResult() {
-    if (win === 1) {
-        setTimeout(()=>{
-            if(confirm("黑棋获胜！是否重新开始一局？")) resetAll();
-        }, 150);
-    } else if (win === -1) {
-        setTimeout(()=>{
-            if(confirm("白棋获胜！是否重新开始一局？")) resetAll();
-        }, 150);
-    }
-}
-
-// 键盘监听
-document.addEventListener("keydown", e=>{
-    if (!roomReady || win !== 0) return;
-    switch(e.key.toLowerCase()){
-        case "arrowup": postion[1] += 1; break;
-        case "arrowdown": postion[1] -= 1; break;
-        case "arrowleft": postion[0] -= 1; break;
-        case "arrowright": postion[0] += 1; break;
-        case "c": postion = [0, 0]; break;
-        case " ": e.preventDefault(); doPlace(); return;
-        case "backspace": doUndo(); return;
+// 键盘事件
+document.addEventListener('keydown', (e) => {
+    if (win !== 0) return;
+    switch(e.key.toLowerCase()) {
+        case 'arrowup':
+            postion[1] += 1;
+            break;
+        case 'arrowdown':
+            postion[1] -= 1;
+            break;
+        case 'arrowleft':
+            postion[0] -= 1;
+            break;
+        case 'arrowright':
+            postion[0] += 1;
+            break;
+        case 'c':
+            postion = [0, 0];
+            break;
+        case ' ':
+            e.preventDefault();
+            place();
+            break;
+        case 'backspace':
+            undo();
+            break;
     }
     // 边界限制
     postion[0] = Math.max(-9, Math.min(9, postion[0]));
     postion[1] = Math.max(-9, Math.min(9, postion[1]));
+    panding();
+    checkWinAlert();
     drawAll();
 });
 
-// 鼠标监听
-canvas.addEventListener("mousedown", e=>{
-    if (!roomReady || win !== 0) return;
+// 鼠标事件
+canvas.addEventListener('mousedown', (e) => {
+    if (win !== 0) return;
     let rect = canvas.getBoundingClientRect();
     let mx = e.clientX - rect.left;
     let my = e.clientY - rect.top;
+    // 坐标转换
     let x = Math.round((mx - CELL/2) / CELL) - 9;
     let y = Math.round((my - CELL/2) / CELL) - 9;
     postion = [x, y];
 
+    // 右键悔棋
     if (e.button === 2) {
-        doUndo();
+        undo();
     } else {
-        doPlace();
+        place();
     }
+    panding();
+    checkWinAlert();
+    drawAll();
 });
-canvas.addEventListener("contextmenu", e=>e.preventDefault());
 
-// 服务端消息处理
-ws.onopen = () => {
-    statusText.innerText = "已连接，等待第二位玩家加入...";
-};
+// 禁止右键菜单
+canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-ws.onmessage = (e) => {
-    let data = JSON.parse(e.data);
-    switch(data.type){
-        // 分配角色：第一个=黑棋，第二个=白棋
-        case "join":
-            myRole = data.role;
-            roomReady = true;
-            if(myRole === 1){
-                statusText.innerText = "你是【黑棋】，先手走棋";
-            }else{
-                statusText.innerText = "你是【白棋】，等待对手落子";
+// 胜负弹窗
+function checkWinAlert() {
+    if (win === 1) {
+        setTimeout(() => {
+            if (confirm("黑棋获胜！是否重新开始？")) {
+                resetGame();
             }
-            drawAll();
-            break;
-        // 对手落子同步
-        case "move":
-            postion = data.pos;
-            if(data.ctrl === 0) white.push([...postion]);
-            else black.push([...postion]);
-            control = data.ctrl;
-            win = data.win;
-            drawAll();
-            checkResult();
-            break;
-        // 对手悔棋同步
-        case "undo":
-            control = data.ctrl;
-            if(control === 1) white.pop();
-            else black.pop();
-            drawAll();
-            break;
-        // 全局重置对局
-        case "reset":
-            win = 0;
-            control = 1;
-            black = [];
-            white = [];
-            postion = [0, 0];
-            drawAll();
-            break;
+        }, 100);
+    } else if (win === -1) {
+        setTimeout(() => {
+            if (confirm("白棋获胜！是否重新开始？")) {
+                resetGame();
+            }
+        }, 100);
     }
-};
+}
 
-ws.onclose = () => {
-    statusText.innerText = "连接断开，请刷新页面重新进入";
-    roomReady = false;
-};
-
-// 初始化绘制
+// 初始化
 drawAll();
 </script>
 </body>
