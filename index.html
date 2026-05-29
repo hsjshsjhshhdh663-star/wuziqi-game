@@ -1,212 +1,278 @@
-function wuziqi
-    clc;
-    axis equal
-    axis([-10,10,-10,10])
-    set(gca,'xtick',[],'ytick',[],...
-'xcolor','w','ycolor','w')
-    set(gca,'color',[0.8392,0.7216,0.3804])
-    hold on
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>单机五子棋</title>
+<style>
+body {
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: "Microsoft YaHei", sans-serif;
+}
+#board {
+    background: #d4b886;
+    border: 2px solid #000;
+}
+.tip {
+    margin: 10px 0;
+    font-size: 16px;
+}
+</style>
+</head>
+<body>
+<div class="tip">操作：鼠标左键落子 | 右键/退格悔棋 | 方向键移动 | 空格落子 | C键归位</div>
+<canvas id="board" width="570" height="570"></canvas>
 
-    row=19;col=19;
+<script>
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const GRID = 19;
+const CELL = 30;
 
-    x1=[-9,-9,-8,-8,-7,-7,-6,-6,-5,...
--5,-4,-4,-3,-3,-2,-2,-1,-1,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9];
-    y1=[-9,9,9,-9,-9,9,9,-9,-9,9,9,...
--9,-9,9,9,-9,-9,9,9,-9,-9,9,9,-9,-9,9,9,-9,-9,9,9,-9,-9,9,9,-9,-9,9];
+// 游戏全局变量（对应你MATLAB代码）
+let win = 0;          // 0对局中 1黑胜 -1白胜
+let control = 1;      // 1黑棋 0白棋
+let postion = [0, 0]; // 光标位置
+let black = [];       // 黑棋坐标
+let white = [];       // 白棋坐标
 
-    x2=[-9,9,9,-9,-9];
-    y2=[9,9,-9,-9,9];
-    x3=[-9.2,9.2,9.2,-9.2,-9.2];
-    y3=[9.2,9.2,-9.2,-9.2,9.2];
-    x4=[-6,-6,-6,0,0,0,6,6,6];
-    y4=[6,0,-6,6,0,-6,6,0,-6];
+// 绘制棋盘
+function drawBoard() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#000";
+    // 网格线
+    for (let i = 0; i < GRID; i++) {
+        let pos = CELL / 2 + i * CELL;
+        ctx.beginPath();
+        ctx.moveTo(pos, CELL / 2);
+        ctx.lineTo(pos, canvas.height - CELL / 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(CELL / 2, pos);
+        ctx.lineTo(canvas.width - CELL / 2, pos);
+        ctx.stroke();
+    }
+    // 四角+天元点位
+    const dots = [
+        [3,3], [3,15], [9,9], [15,3], [15,15]
+    ];
+    ctx.fillStyle = "#000";
+    dots.forEach(([x,y]) => {
+        let cx = CELL/2 + x * CELL;
+        let cy = CELL/2 + y * CELL;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+        ctx.fill();
+    });
+}
 
-    plot(x1,y1,'k')
-    plot(y1,x1,'k')
-    plot(x2,y2,'k','LineWidth',2)
-    plot(x3,y3,'k')
-    scatter(x4,y4,30,'k','filled')
+// 绘制所有棋子 + 光标
+function drawAll() {
+    drawBoard();
+    // 画黑棋
+    black.forEach(([x,y]) => {
+        let cx = CELL/2 + (x + 9) * CELL;
+        let cy = CELL/2 + (y + 9) * CELL;
+        ctx.fillStyle = "#000";
+        ctx.beginPath();
+        ctx.arc(cx, cy, CELL/2 - 2, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    // 画白棋
+    white.forEach(([x,y]) => {
+        let cx = CELL/2 + (x + 9) * CELL;
+        let cy = CELL/2 + (y + 9) * CELL;
+        ctx.fillStyle = "#fff";
+        ctx.strokeStyle = "#000";
+        ctx.beginPath();
+        ctx.arc(cx, cy, CELL/2 - 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+    });
+    // 红色光标
+    let cx = CELL/2 + (postion[0] + 9) * CELL;
+    let cy = CELL/2 + (postion[1] + 9) * CELL;
+    ctx.strokeStyle = "#f00";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, CELL/2 - 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+}
 
-    % ================== 游戏变量 ==================
-    win=0;              
-    control=1;          
-    postion=[0 0];     
-    black = [];        
-    white = [];        
+// 胜负判断（完全复刻你的MATLAB逻辑）
+function panding() {
+    if (black.length === 0 && white.length === 0) return;
+    let qipan = Array(GRID).fill().map(() => Array(GRID).fill(0));
+    // 映射坐标
+    black.forEach(([x,y]) => {
+        let tx = x + 9;
+        let ty = y + 9;
+        qipan[ty][tx] = 1;
+    });
+    white.forEach(([x,y]) => {
+        let tx = x + 9;
+        let ty = y + 9;
+        qipan[ty][tx] = -1;
+    });
 
-    % 绘图句柄
-    plotblack=scatter(NaN,NaN,150,'k','filled');
-    plotwhite=scatter(NaN,NaN,150,'w','filled','MarkerEdgeColor','k');
-    plotpostion=scatter(postion(1,1),postion(1,2),150,'rx');
+    // 四个方向判断五子连珠
+    const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+    for (let y = 0; y < GRID; y++) {
+        for (let x = 0; x < GRID; x++) {
+            let cur = qipan[y][x];
+            if (cur === 0) continue;
+            for (let [dx, dy] of dirs) {
+                let cnt = 1;
+                // 正向
+                for (let k = 1; k < 5; k++) {
+                    let nx = x + dx * k;
+                    let ny = y + dy * k;
+                    if (nx >=0 && nx < GRID && ny >=0 && ny < GRID && qipan[ny][nx] === cur) cnt++;
+                    else break;
+                }
+                // 反向
+                for (let k = 1; k < 5; k++) {
+                    let nx = x - dx * k;
+                    let ny = y - dy * k;
+                    if (nx >=0 && nx < GRID && ny >=0 && ny < GRID && qipan[ny][nx] === cur) cnt++;
+                    else break;
+                }
+                if (cnt >= 5) {
+                    win = cur;
+                    return;
+                }
+            }
+        }
+    }
+}
 
-    % 绑定键盘鼠标
-    set(gcf, 'KeyPressFcn', @key);
-    set(gcf,'WindowButtonDownFcn',@getpoint);
+// 落子逻辑
+function place() {
+    let exist = false;
+    for (let p of black) {
+        if (p[0] === postion[0] && p[1] === postion[1]) { exist = true; break; }
+    }
+    for (let p of white) {
+        if (p[0] === postion[0] && p[1] === postion[1]) { exist = true; break; }
+    }
+    if (exist) return;
 
-    % ================== 刷新界面 ==================
-    function wuziqigame(~,~)
-        postion(postion>9)=-9;
-        postion(postion<-9)=9;
+    if (control === 1) {
+        black.push([...postion]);
+    } else {
+        white.push([...postion]);
+    }
+    control = (control + 1) % 2;
+}
 
-        panding(); % 判断输赢
+// 悔棋逻辑
+function undo() {
+    let ok = false;
+    if (control === 0 && black.length > 0) {
+        black.pop();
+        ok = true;
+    }
+    if (control === 1 && white.length > 0) {
+        white.pop();
+        ok = true;
+    }
+    if (ok) {
+        control = (control + 1) % 2;
+    }
+}
 
-        % 刷新棋子
-        if ~isempty(black)
-            set(plotblack,'XData',black(:,1),'YData',black(:,2));
-        else
-            set(plotblack,'XData',NaN,'YData',NaN);
-        end
-        if ~isempty(white)
-            set(plotwhite,'XData',white(:,1),'YData',white(:,2));
-        else
-            set(plotwhite,'XData',NaN,'YData',NaN);
-        end
+// 重置游戏
+function resetGame() {
+    win = 0;
+    control = 1;
+    black = [];
+    white = [];
+    postion = [0, 0];
+    drawAll();
+}
 
-        set(plotpostion,'XData',postion(1,1),'YData',postion(1,2))
+// 键盘事件
+document.addEventListener('keydown', (e) => {
+    if (win !== 0) return;
+    switch(e.key.toLowerCase()) {
+        case 'arrowup':
+            postion[1] += 1;
+            break;
+        case 'arrowdown':
+            postion[1] -= 1;
+            break;
+        case 'arrowleft':
+            postion[0] -= 1;
+            break;
+        case 'arrowright':
+            postion[0] += 1;
+            break;
+        case 'c':
+            postion = [0, 0];
+            break;
+        case ' ':
+            e.preventDefault();
+            place();
+            break;
+        case 'backspace':
+            undo();
+            break;
+    }
+    // 边界限制
+    postion[0] = Math.max(-9, Math.min(9, postion[0]));
+    postion[1] = Math.max(-9, Math.min(9, postion[1]));
+    panding();
+    checkWinAlert();
+    drawAll();
+});
 
-        % ================== 胜负弹窗 + 正确重新开始 ==================
-        if win == 1
-            button = questdlg('黑棋获胜！','游戏结束','重新开始','关闭','重新开始');
-            if strcmp(button,'重新开始')
-                % 重置所有变量 → 继续游戏
-                win = 0;
-                control = 1;
-                black = [];
-                white = [];
-                postion = [0 0];
-            else
-                close(gcf);
-            end
-        end
+// 鼠标事件
+canvas.addEventListener('mousedown', (e) => {
+    if (win !== 0) return;
+    let rect = canvas.getBoundingClientRect();
+    let mx = e.clientX - rect.left;
+    let my = e.clientY - rect.top;
+    // 坐标转换
+    let x = Math.round((mx - CELL/2) / CELL) - 9;
+    let y = Math.round((my - CELL/2) / CELL) - 9;
+    postion = [x, y];
 
-        if win == -1
-            button = questdlg('白棋获胜！','游戏结束','重新开始','关闭','重新开始');
-            if strcmp(button,'重新开始')
-                % 重置所有变量 → 继续游戏
-                win = 0;
-                control = 1;
-                black = [];
-                white = [];
-                postion = [0 0];
-            else
-                close(gcf);
-            end
-        end
-    end
+    // 右键悔棋
+    if (e.button === 2) {
+        undo();
+    } else {
+        place();
+    }
+    panding();
+    checkWinAlert();
+    drawAll();
+});
 
-    % ================== 输赢判断 ==================
-    function panding(~,~)
-        if isempty(black) && isempty(white)
-            return;
-        end
+// 禁止右键菜单
+canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-        mat=zeros(row+4,col+4);
-        x=3:(row+2);y=3:(col+2);
-        qipan=zeros(row,col);
+// 胜负弹窗
+function checkWinAlert() {
+    if (win === 1) {
+        setTimeout(() => {
+            if (confirm("黑棋获胜！是否重新开始？")) {
+                resetGame();
+            }
+        }, 100);
+    } else if (win === -1) {
+        setTimeout(() => {
+            if (confirm("白棋获胜！是否重新开始？")) {
+                resetGame();
+            }
+        }, 100);
+    }
+}
 
-        try
-            blackpos=sub2ind([row,col], black(:,2)+10, black(:,1)+10);
-            whitepos=sub2ind([row,col], white(:,2)+10, white(:,1)+10);
-            qipan(blackpos)=1;
-            qipan(whitepos)=-1;
-        catch
-            return;
-        end
-
-        mat(x,y)=qipan;
-
-        mat1=mat(x,y)+mat(x+1,y)+mat(x+2,y)+mat(x-1,y)+mat(x-2,y);
-        mat2=mat(x,y)+mat(x,y+1)+mat(x,y+2)+mat(x,y-1)+mat(x,y-2);
-        mat3=mat(x,y)+mat(x+1,y+1)+mat(x+2,y+2)+mat(x-1,y-1)+mat(x-2,y-2);
-        mat4=mat(x,y)+mat(x+1,y-1)+mat(x+2,y-2)+mat(x-1,y+1)+mat(x-2,y+2);
-
-        if any(mat1(:)==5)||any(mat2(:)==5)||any(mat3(:)==5)||any(mat4(:)==5)
-            win=1;
-        end
-        if any(mat1(:)==-5)||any(mat2(:)==-5)||any(mat3(:)==-5)||any(mat4(:)==-5)
-            win=-1;
-        end
-    end
-
-    % ================== 键盘 ==================
-    function key(~,event)
-        if win ~= 0 % 赢了就不能再操作
-            return;
-        end
-        switch event.Key
-            case 'uparrow'
-                postion=postion+[0,1];
-            case 'downarrow'
-                postion=postion+[0,-1];
-            case 'leftarrow'
-                postion=postion+[-1,0];
-            case 'rightarrow'
-                postion=postion+[1,0];
-            case 'c'
-                postion=[0,0];
-            case 'space'
-                if isempty(black) && isempty(white)
-                    ok = true;
-                else
-                    ok = ~ismember(postion, [black;white], 'rows');
-                end
-                if ok
-                    if control==1
-                        black=[black;postion];
-                    else
-                        white=[white;postion];
-                    end
-                    control=mod(control+1,2);
-                end
-            case 'backspace'
-                co=0;
-                if control==0&&~isempty(black)
-                    black(end,:)=[];co=1;
-                end
-                if control==1&&~isempty(white)
-                    white(end,:)=[];co=1;
-                end
-                if co==1
-                    control=mod(control+1,2);
-                end
-        end
-        wuziqigame();
-    end
-
-    % ================== 鼠标 ==================
-    function getpoint(~,~)
-        if win ~= 0
-            return;
-        end
-        xy=get(gca,'CurrentPoint');
-        postion=[round(xy(1,1)), round(xy(1,2))];
-
-        if strcmp(get(gcf,'SelectionType'),'alt')
-            co=0;
-            if control==0&&~isempty(black)
-                black(end,:)=[];co=1;
-            end
-            if control==1&&~isempty(white)
-                white(end,:)=[];co=1;
-            end
-            if co==1
-                control=mod(control+1,2);
-            end
-        else
-            if isempty(black) && isempty(white)
-                ok = true;
-            else
-                ok = ~ismember(postion, [black;white], 'rows');
-            end
-            if ok
-                if control==1
-                    black=[black;postion];
-                else
-                    white=[white;postion];
-                end
-                control=mod(control+1,2);
-            end
-        end
-        wuziqigame();
-    end
-end
+// 初始化
+drawAll();
+</script>
+</body>
+</html>
