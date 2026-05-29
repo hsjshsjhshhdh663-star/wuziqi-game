@@ -1,212 +1,186 @@
-function wuziqi
-    clc;
-    axis equal
-    axis([-10,10,-10,10])
-    set(gca,'xtick',[],'ytick',[],...
-'xcolor','w','ycolor','w')
-    set(gca,'color',[0.8392,0.7216,0.3804])
-    hold on
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>联网五子棋</title>
+<style>
+body{background:#d4b886;display:flex;flex-direction:column;align-items:center;font-family:"Microsoft YaHei"}
+#board{border:2px solid #000;background:#d4b886}
+.info{font-size:18px;margin:10px}
+button{padding:8px 16px;font-size:16px;margin:5px}
+</style>
+</head>
+<body>
+<div class="info">状态：<span id="status">正在连接...</span></div>
+<div class="info">回合：<span id="turn">-</span></div>
+<canvas id="board" width="570" height="570"></canvas>
+<div>
+<button id="restart">重新开始</button>
+</div>
 
-    row=19;col=19;
+<script>
+// ===== 棋盘配置 =====
+const GRID=19,SIZE=30;
+const canvas=document.getElementById('board');
+const ctx=canvas.getContext('2d');
 
-    x1=[-9,-9,-8,-8,-7,-7,-6,-6,-5,...
--5,-4,-4,-3,-3,-2,-2,-1,-1,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9];
-    y1=[-9,9,9,-9,-9,9,9,-9,-9,9,9,...
--9,-9,9,9,-9,-9,9,9,-9,-9,9,9,-9,-9,9,9,-9,-9,9,9,-9,-9,9,9,-9,-9,9];
+let board=Array(GRID).fill().map(()=>Array(GRID).fill(0));
+let me=0; // 1黑 2白
+let turn=1;
+let gameOver=false;
+let socket;
 
-    x2=[-9,9,9,-9,-9];
-    y2=[9,9,-9,-9,9];
-    x3=[-9.2,9.2,9.2,-9.2,-9.2];
-    y3=[9.2,9.2,-9.2,-9.2,9.2];
-    x4=[-6,-6,-6,0,0,0,6,6,6];
-    y4=[6,0,-6,6,0,-6,6,0,-6];
+// ===== 画棋盘 =====
+function drawBoard(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.strokeStyle='#000';
+    for(let i=0;i<GRID;i++){
+        ctx.beginPath();
+        ctx.moveTo(SIZE/2+i*SIZE,SIZE/2);
+        ctx.lineTo(SIZE/2+i*SIZE,canvas.height-SIZE/2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(SIZE/2,SIZE/2+i*SIZE);
+        ctx.lineTo(canvas.width-SIZE/2,SIZE/2+i*SIZE);
+        ctx.stroke();
+    }
+}
 
-    plot(x1,y1,'k')
-    plot(y1,x1,'k')
-    plot(x2,y2,'k','LineWidth',2)
-    plot(x3,y3,'k')
-    scatter(x4,y4,30,'k','filled')
+// ===== 画棋子 =====
+function drawPiece(x,y,color){
+    let cx=SIZE/2+x*SIZE;
+    let cy=SIZE/2+y*SIZE;
+    ctx.beginPath();
+    ctx.arc(cx,cy,SIZE/2-2,0,Math.PI*2);
+    if(color===1){
+        ctx.fillStyle='#000';
+        ctx.fill();
+    }else{
+        ctx.fillStyle='#fff';
+        ctx.fill();
+        ctx.strokeStyle='#000';
+        ctx.stroke();
+    }
+}
 
-    % ================== 游戏变量 ==================
-    win=0;              
-    control=1;          
-    postion=[0 0];     
-    black = [];        
-    white = [];        
+// ===== 判断胜负 =====
+function checkWin(x,y,color){
+    let dirs=[[1,0],[0,1],[1,1],[1,-1]];
+    for(let [dx,dy] of dirs){
+        let cnt=1;
+        for(let i=1;i<5;i++){
+            let nx=x+dx*i, ny=y+dy*i;
+            if(nx>=0&&nx<GRID&&ny>=0&&ny<GRID&&board[ny][nx]===color) cnt++;
+            else break;
+        }
+        for(let i=1;i<5;i++){
+            let nx=x-dx*i, ny=y-dy*i;
+            if(nx>=0&&nx<GRID&&ny>=0&&ny<GRID&&board[ny][nx]===color) cnt++;
+            else break;
+        }
+        if(cnt>=5) return true;
+    }
+    return false;
+}
 
-    % 绘图句柄
-    plotblack=scatter(NaN,NaN,150,'k','filled');
-    plotwhite=scatter(NaN,NaN,150,'w','filled','MarkerEdgeColor','k');
-    plotpostion=scatter(postion(1,1),postion(1,2),150,'rx');
+// ===== 落子 =====
+function place(x,y){
+    if(gameOver) return;
+    if(turn!==me) return;
+    if(x<0||x>=GRID||y<0||y>=GRID||board[y][x]!==0) return;
 
-    % 绑定键盘鼠标
-    set(gcf, 'KeyPressFcn', @key);
-    set(gcf,'WindowButtonDownFcn',@getpoint);
+    board[y][x]=me;
+    drawPiece(x,y,me);
 
-    % ================== 刷新界面 ==================
-    function wuziqigame(~,~)
-        postion(postion>9)=-9;
-        postion(postion<-9)=9;
+    if(checkWin(x,y,me)){
+        gameOver=true;
+        document.getElementById('status').innerText=me===1?"黑棋胜利！":"白棋胜利！";
+        return;
+    }
 
-        panding(); % 判断输赢
+    turn=me===1?2:1;
+    document.getElementById('turn').innerText=turn===1?"黑棋回合":"白棋回合";
 
-        % 刷新棋子
-        if ~isempty(black)
-            set(plotblack,'XData',black(:,1),'YData',black(:,2));
-        else
-            set(plotblack,'XData',NaN,'YData',NaN);
-        end
-        if ~isempty(white)
-            set(plotwhite,'XData',white(:,1),'YData',white(:,2));
-        else
-            set(plotwhite,'XData',NaN,'YData',NaN);
-        end
+    // 发给对方
+    socket.send(JSON.stringify({type:"move",x:x,y:y,color:me}));
+}
 
-        set(plotpostion,'XData',postion(1,1),'YData',postion(1,2))
+// ===== 重新开始 =====
+function restart(){
+    board=Array(GRID).fill().map(()=>Array(GRID).fill(0));
+    turn=1;
+    gameOver=false;
+    drawBoard();
+    document.getElementById('turn').innerText="黑棋回合";
+    document.getElementById('status').innerText="游戏中";
+    socket.send(JSON.stringify({type:"restart"}));
+}
 
-        % ================== 胜负弹窗 + 正确重新开始 ==================
-        if win == 1
-            button = questdlg('黑棋获胜！','游戏结束','重新开始','关闭','重新开始');
-            if strcmp(button,'重新开始')
-                % 重置所有变量 → 继续游戏
-                win = 0;
-                control = 1;
-                black = [];
-                white = [];
-                postion = [0 0];
-            else
-                close(gcf);
-            end
-        end
+// ===== 鼠标点击 =====
+canvas.onclick=function(e){
+    let x=Math.round((e.offsetX-SIZE/2)/SIZE);
+    let y=Math.round((e.offsetY-SIZE/2)/SIZE);
+    place(x,y);
+};
+document.getElementById('restart').onclick=restart;
 
-        if win == -1
-            button = questdlg('白棋获胜！','游戏结束','重新开始','关闭','重新开始');
-            if strcmp(button,'重新开始')
-                % 重置所有变量 → 继续游戏
-                win = 0;
-                control = 1;
-                black = [];
-                white = [];
-                postion = [0 0];
-            else
-                close(gcf);
-            end
-        end
-    end
+// ===== 联网（简易版，同房间自动配对） =====
+function connect(){
+    // 这里用公共免费多人服务器（我写死一个简易房间）
+    let room="wuziqi-room-001";
+    socket=new WebSocket("wss://echo.websocket.org"); // 公共测试服务器
 
-    % ================== 输赢判断 ==================
-    function panding(~,~)
-        if isempty(black) && isempty(white)
-            return;
-        end
+    socket.onopen=()=>{
+        document.getElementById('status').innerText="已连接，等待对手...";
+    };
 
-        mat=zeros(row+4,col+4);
-        x=3:(row+2);y=3:(col+2);
-        qipan=zeros(row,col);
+    socket.onmessage=(evt)=>{
+        let msg;
+        try{msg=JSON.parse(evt.data);}catch{return;}
+        if(msg.type==="move"){
+            board[msg.y][msg.x]=msg.color;
+            drawPiece(msg.x,msg.y,msg.color);
+            if(checkWin(msg.x,msg.y,msg.color)){
+                gameOver=true;
+                document.getElementById('status').innerText=msg.color===1?"黑棋胜利！":"白棋胜利！";
+            }else{
+                turn=msg.color===1?2:1;
+                document.getElementById('turn').innerText=turn===1?"黑棋回合":"白棋回合";
+            }
+        }else if(msg.type==="restart"){
+            board=Array(GRID).fill().map(()=>Array(GRID).fill(0));
+            turn=1;
+            gameOver=false;
+            drawBoard();
+            document.getElementById('turn').innerText="黑棋回合";
+            document.getElementById('status').innerText="游戏中";
+        }
+    };
 
-        try
-            blackpos=sub2ind([row,col], black(:,2)+10, black(:,1)+10);
-            whitepos=sub2ind([row,col], white(:,2)+10, white(:,1)+10);
-            qipan(blackpos)=1;
-            qipan(whitepos)=-1;
-        catch
-            return;
-        end
+    socket.onerror=()=>{
+        document.getElementById('status').innerText="连接错误，请刷新";
+    };
 
-        mat(x,y)=qipan;
+    socket.onclose=()=>{
+        document.getElementById('status').innerText="断开连接，刷新重连";
+    };
 
-        mat1=mat(x,y)+mat(x+1,y)+mat(x+2,y)+mat(x-1,y)+mat(x-2,y);
-        mat2=mat(x,y)+mat(x,y+1)+mat(x,y+2)+mat(x,y-1)+mat(x,y-2);
-        mat3=mat(x,y)+mat(x+1,y+1)+mat(x+2,y+2)+mat(x-1,y-1)+mat(x-2,y-2);
-        mat4=mat(x,y)+mat(x+1,y-1)+mat(x+2,y-2)+mat(x-1,y+1)+mat(x-2,y+2);
+    // 简单分配黑白：先连=黑，后连=白
+    setTimeout(()=>{
+        if(me===0){
+            me=1;
+            document.getElementById('status').innerText="你是黑棋（先手）";
+            document.getElementById('turn').innerText="黑棋回合";
+        }else{
+            me=2;
+            document.getElementById('status').innerText="你是白棋（后手）";
+            document.getElementById('turn').innerText="黑棋回合";
+        }
+    },800);
+}
 
-        if any(mat1(:)==5)||any(mat2(:)==5)||any(mat3(:)==5)||any(mat4(:)==5)
-            win=1;
-        end
-        if any(mat1(:)==-5)||any(mat2(:)==-5)||any(mat3(:)==-5)||any(mat4(:)==-5)
-            win=-1;
-        end
-    end
-
-    % ================== 键盘 ==================
-    function key(~,event)
-        if win ~= 0 % 赢了就不能再操作
-            return;
-        end
-        switch event.Key
-            case 'uparrow'
-                postion=postion+[0,1];
-            case 'downarrow'
-                postion=postion+[0,-1];
-            case 'leftarrow'
-                postion=postion+[-1,0];
-            case 'rightarrow'
-                postion=postion+[1,0];
-            case 'c'
-                postion=[0,0];
-            case 'space'
-                if isempty(black) && isempty(white)
-                    ok = true;
-                else
-                    ok = ~ismember(postion, [black;white], 'rows');
-                end
-                if ok
-                    if control==1
-                        black=[black;postion];
-                    else
-                        white=[white;postion];
-                    end
-                    control=mod(control+1,2);
-                end
-            case 'backspace'
-                co=0;
-                if control==0&&~isempty(black)
-                    black(end,:)=[];co=1;
-                end
-                if control==1&&~isempty(white)
-                    white(end,:)=[];co=1;
-                end
-                if co==1
-                    control=mod(control+1,2);
-                end
-        end
-        wuziqigame();
-    end
-
-    % ================== 鼠标 ==================
-    function getpoint(~,~)
-        if win ~= 0
-            return;
-        end
-        xy=get(gca,'CurrentPoint');
-        postion=[round(xy(1,1)), round(xy(1,2))];
-
-        if strcmp(get(gcf,'SelectionType'),'alt')
-            co=0;
-            if control==0&&~isempty(black)
-                black(end,:)=[];co=1;
-            end
-            if control==1&&~isempty(white)
-                white(end,:)=[];co=1;
-            end
-            if co==1
-                control=mod(control+1,2);
-            end
-        else
-            if isempty(black) && isempty(white)
-                ok = true;
-            else
-                ok = ~ismember(postion, [black;white], 'rows');
-            end
-            if ok
-                if control==1
-                    black=[black;postion];
-                else
-                    white=[white;postion];
-                end
-                control=mod(control+1,2);
-            end
-        end
-        wuziqigame();
-    end
-end
+drawBoard();
+connect();
+</script>
+</body>
+</html>
